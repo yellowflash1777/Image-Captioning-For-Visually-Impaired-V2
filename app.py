@@ -63,9 +63,9 @@ def generate_caption(image):
 @app.route('/', methods=['GET','POST'])
 def capture_image():
     if request.method == "POST":
-        print("lalala")
-        captured_image_data = request.get("captured_image")
-        caption=generate_caption(captured_image_data)
+        image_data = request.files['image']
+        print(image_data)
+        caption=generate_caption(image_data)
         return render_template('index2.html',caption=caption,audio='samplecaption.mp3')
     return render_template('index2.html')
 

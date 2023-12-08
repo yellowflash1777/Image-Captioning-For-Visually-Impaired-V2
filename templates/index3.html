@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+        .container {
+            margin: 20px;
+        }
+        .section {
+            display: inline-block;
+            width: 48%;
+            margin: 10px;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            background-color: #f7f7f7;
+        }
+        img {
+            max-width: 100%;
+            max-height: 300px;
+        }
+        .button {
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            background-color: #007BFF;
+            color: #fff;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Image Generator</h1>
+    <div class="container">
+        <div class="section">
+            <h2>Upload Image</h2>
+            <input type="file" id="uploadInput" name="image" accept="image/*">
+            <img id="uploadedImage" alt="Uploaded Image">
+            <br>
+            <button class="button" id="uploadButton">Generate</button>
+        </div>
+        <div class="section">
+            <h2>Capture Image</h2>
+            <video id="webcam" width="100%" autoplay></video>
+            <br>
+            <button class="button" id="captureButton">Capture</button>
+        </div>
+        
+        <!-- Add a caption element to display the generated caption -->
+        <p id="caption">
+            {% if caption %}
+            <h1>Captions: </h1>
+            <p>{{ caption }}</p>
+            <h1>Audio Player</h1>
+            <audio controls>
+                <source src="{{ url_for('download_audio', filename=audio) }}" type="audio/mpeg">
+                Your browser does not support the audio element.
+             </audio>
+
+        {% endif %}
+        </p>
+    </div>
+    <script>
+        // Image Upload Section
+        const uploadInput = document.getElementById('uploadInput');
+        const uploadedImage = document.getElementById('uploadedImage');
+        const uploadButton = document.getElementById('uploadButton');
+        
+        uploadInput.addEventListener('change', () => {
+            const file = uploadInput.files[0];
+            if (file) {
+                const imageURL = URL.createObjectURL(file);
+                uploadedImage.src = imageURL;
+            }
+        });
+
+        // Webcam Capture Section
+        const captureButton = document.getElementById('captureButton');
+        const webcam = document.getElementById('webcam');
+
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(function (stream) {
+                webcam.srcObject = stream;
+            })
+            .catch(function (error) {
+                console.error('Error accessing the webcam:', error);
+            });
+
+            captureButton.addEventListener('click', function () {
+                const canvas = document.createElement('canvas');
+                canvas.width = webcam.videoWidth;
+                canvas.height = webcam.videoHeight;
+                const context = canvas.getContext('2d');
+                context.drawImage(webcam, 0, 0, canvas.width, canvas.height);
+                const capturedImage = document.createElement('img');
+                capturedImage.src = canvas.toDataURL('image/png');
+                uploadedImage.replaceWith(capturedImage);
+                const dataURL = canvas.toDataURL('image/png');
+        
+                // Send the data URL to the Flask backend
+                fetch('/process_captured_image', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ image_data: dataURL }),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Response from server:', data);
+                    // Display the generated caption on the webpage
+                    const captionElement = document.getElementById('caption');
+                    captionElement.textContent = data.caption;
+                })
+                .catch(error => {
+                    console.error('Error sending image data to server:', error);
+                });
+            });
+        </script>
+</body>
+</html>
