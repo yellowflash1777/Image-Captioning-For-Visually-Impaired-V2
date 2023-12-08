@@ -10,15 +10,12 @@ import pickle
 from argparse import Namespace
 from PIL import Image
 from models.End_ExpansionNet_v2 import End_ExpansionNet_v2
-from flask_cors import CORS 
+
 from utils.language_utils import tokens2description
-import uuid
-from datetime import datetime
 
 
 # Define the Flask app
 app = Flask(__name__, template_folder="templates")
-CORS(app)
 
 img_size = 384
 
@@ -38,41 +35,52 @@ def preprocess_image(image_data, img_size):
 #captured_image_data = request.form.get("captured_image")
 #uploaded_image = request.files['image']
 # Define the route for generating image captions
-@app.route('/api/caption', methods=['POST'])
-def generate_caption_api():
-    if 'image' not in request.files:
-        return jsonify({'error': 'No image part in the request'})
-    start = time()
-    image_data = request.files['image'].read()
-    image = preprocess_image(image_data, img_size)
+def generate_caption(image):
+        start = time()
+        # Check if an image was uploaded
+        # Read the uploaded image data
+        image_data = image.read()
+        # Create a PIL image from the uploaded data
+        image = preprocess_image(image_data,img_size)
+        beam_search_kwargs = {'beam_size': args.beam_size,
+                              'beam_max_seq_len': args.max_seq_len,
+                              'sample_or_max': 'max',
+                              'how_many_outputs': 1,
+                              'sos_idx': sos_idx,
+                              'eos_idx': eos_idx}
+        with torch.no_grad():
+            pred, _ = model(enc_x=image,
+                            enc_x_num_pads=[0],
+                            mode='beam_search', **beam_search_kwargs)
+        pred = tokens2description(pred[0][0], coco_tokens['idx2word_list'], sos_idx, eos_idx)
+        print('\n\tDescription: ' + pred + '\n')
+        stop = time()
+        print('Time: {:.4f}s\n'.format(stop-start))
+        myobj = gTTS(text=pred, lang='en', slow=False)
+        myobj.save("samplecaption.mp3")
+        return pred
 
-    beam_search_kwargs = {'beam_size': 5,  # You can set your desired beam size
-                          'beam_max_seq_len': 74,  # Adjust if needed
-                          'sample_or_max': 'max',
-                          'how_many_outputs': 1,
-                          'sos_idx': sos_idx,
-                          'eos_idx': eos_idx}
+@app.route('/', methods=['GET','POST'])
+def capture_image():
+    if request.method == "POST":
+        image_data = request.files['image']
+        print(image_data)
+        caption=generate_caption(image_data)
+        return render_template('index2.html',caption=caption,audio='samplecaption.mp3')
+    return render_template('index2.html')
 
-    with torch.no_grad():
-        pred, _ = model(enc_x=image, enc_x_num_pads=[0], mode='beam_search', **beam_search_kwargs)
-
-    pred_description = tokens2description(pred[0][0], coco_tokens['idx2word_list'], sos_idx, eos_idx)
-    # print('\n\tDescription: ' + pred + '\n')
-    stop = time()
-    print('Time: {:.4f}s\n'.format(stop-start))
-    # Save audio
-    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-    unique_id = str(uuid.uuid4())[:8]
-    audioname=f'caption_{timestamp}_{unique_id}.mp3'
-    audio_path = "Audio/"+audioname
-    myobj = gTTS(text=pred_description, lang='en', slow=False)
-    myobj.save(audio_path)
-
-    return jsonify({'caption': pred_description, 'audio_path': audioname})
+@app.route('/upload', methods=['GET','POST'])
+def upload_image():
+    if request.method == "POST":
+        uploaded_image = request.files['image']
+        caption=generate_caption(uploaded_image)
+        return render_template('index2.html',caption=caption,audio='samplecaption.mp3')
+    
 
 @app.route('/audio/<path:filename>')
-def serve_audio(filename):
-    return send_from_directory('Audio', filename)
+def download_audio(filename):
+    return send_from_directory('', filename)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Demo')
